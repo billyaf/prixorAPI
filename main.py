@@ -1,4 +1,4 @@
-# main.py (Versi Final dengan Debugging Error Eksplisit)
+# main.py (Versi Debugging Hardcode - HANYA UNTUK TES)
 
 import os
 import json
@@ -10,22 +10,27 @@ from pydantic import BaseModel
 
 # --- Variabel Global ---
 db = None
-# Variabel ini akan menyimpan pesan error spesifik jika koneksi gagal.
-DB_CONNECTION_ERROR = "Tidak ada error yang tercatat. Koneksi seharusnya berhasil."
+DB_CONNECTION_ERROR = "Tidak ada error yang tercatat."
+
+# ==============================================================================
+# --- BAGIAN DEBUGGING ---
+# Ganti teks di bawah ini dengan string Base64 Anda yang sangat panjang.
+# Pastikan string berada di dalam tanda kutip ("").
+# ==============================================================================
+HARDCODED_BASE64_KEY = "PASTE_YOUR_VERY_LONG_BASE64_STRING_HERE"
+# ==============================================================================
+
 
 # --- Fungsi Startup Event ---
 async def initialize_database():
-    """Menginisialisasi koneksi ke Firebase saat startup dan mencatat error jika ada."""
+    """Menginisialisasi koneksi ke Firebase menggunakan kunci yang di-hardcode."""
     global db, DB_CONNECTION_ERROR
     try:
-        # Ambil kunci Base64 dari Environment Variable Vercel
-        base64_encoded_key = os.getenv('FIREBASE_SERVICE_ACCOUNT_BASE64')
-        
-        if not base64_encoded_key:
-            raise ValueError("Environment variable 'FIREBASE_SERVICE_ACCOUNT_BASE64' tidak ditemukan.")
-        
+        if not HARDCODED_BASE64_KEY or HARDCODED_BASE64_KEY == "PASTE_YOUR_VERY_LONG_BASE64_STRING_HERE":
+            raise ValueError("Kunci Base64 yang di-hardcode belum diisi.")
+
         # Decode Base64 kembali menjadi string JSON
-        decoded_key_str = base64.b64decode(base64_encoded_key).decode('utf-8')
+        decoded_key_str = base64.b64decode(HARDCODED_BASE64_KEY).decode('utf-8')
         service_account_info = json.loads(decoded_key_str)
         
         if not firebase_admin._apps:
@@ -33,17 +38,16 @@ async def initialize_database():
             firebase_admin.initialize_app(cred)
         
         db = firestore.client()
-        print("--- KONEKSI DATABASE BERHASIL SAAT STARTUP ---")
+        print("--- KONEKSI DATABASE (HARDCODE) BERHASIL SAAT STARTUP ---")
 
     except Exception as e:
-        # INI BAGIAN PENTING: Simpan pesan error ke variabel global
         DB_CONNECTION_ERROR = str(e)
-        print(f"--- KONEKSI DATABASE GAGAL: {DB_CONNECTION_ERROR} ---")
+        print(f"--- KONEKSI DATABASE (HARDCODE) GAGAL: {DB_CONNECTION_ERROR} ---")
         db = None
 
 # --- Inisialisasi Aplikasi FastAPI ---
 app = FastAPI(
-    title="API Deteksi Harga Produk",
+    title="API Deteksi Harga Produk (Debug Mode)",
     on_startup=[initialize_database]
 )
 
@@ -57,13 +61,11 @@ class Product(BaseModel):
 # --- API Endpoints ---
 @app.get("/")
 def read_root():
-    """Endpoint root untuk mengecek status server dan detail error koneksi."""
     if db:
-        return {"status": "OK", "message": "API server is running and connected to database."}
+        return {"status": "OK (DEBUG MODE)", "message": "API server is running and connected to database."}
     else:
-        # Tampilkan pesan error spesifik yang telah kita simpan
         return {
-            "status": "ERROR",
+            "status": "ERROR (DEBUG MODE)",
             "message": "Database connection FAILED.",
             "error_details": DB_CONNECTION_ERROR
         }
@@ -81,3 +83,4 @@ async def get_product_by_id(product_id: str):
             raise HTTPException(status_code=404, detail=f"Produk dengan ID '{product_id}' tidak ditemukan.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Terjadi kesalahan internal: {e}")
+
