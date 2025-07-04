@@ -1,8 +1,10 @@
 # main.py
+from fastapi import FastAPI, HTTPException
 import firebase_admin
 from firebase_admin import credentials, firestore
-import os   # <-- Tambahkan import ini
-import json # <-- Tambahkan import ini
+import os
+import json
+from pydantic import BaseModel
 
 # ...
 try:
