@@ -1,62 +1,60 @@
-# main.py (Versi Diperbaiki)
+# main.py (Versi Final dengan Base64)
 
 import os
 import json
+import base64 # <-- Tambahkan import ini
 from fastapi import FastAPI, HTTPException
 import firebase_admin
 from firebase_admin import credentials, firestore
 from pydantic import BaseModel
 
-# --- Variabel Global untuk Database ---
-# Kita siapkan variabel 'db' di sini, tapi kita isi nanti saat startup.
+# Variabel Global untuk Database
 db = None
 
-# --- Fungsi Startup Event ---
-# Fungsi ini akan dijalankan oleh FastAPI HANYA SATU KALI saat aplikasi dimulai.
+# Fungsi Startup Event
 async def initialize_database():
-    """Menginisialisasi koneksi ke Firebase Firestore saat startup."""
+    """Menginisialisasi koneksi ke Firebase Firestore dari kunci Base64."""
     global db
     try:
-        # Ambil kredensial dari Environment Variable Vercel
-        service_account_info_str = os.getenv('FIREBASE_SERVICE_ACCOUNT_JSON')
+        # Ambil kunci yang sudah di-encode Base64 dari Environment Variable
+        base64_encoded_key = os.getenv('FIREBASE_SERVICE_ACCOUNT_BASE64')
         
-        if not service_account_info_str:
-            raise ValueError("Kredensial Firebase tidak ditemukan di environment variables.")
+        if not base64_encoded_key:
+            raise ValueError("Kunci Base64 Firebase tidak ditemukan di environment variables.")
         
-        service_account_info = json.loads(service_account_info_str)
+        # Decode Base64 kembali menjadi string JSON
+        decoded_key_str = base64.b64decode(base64_encoded_key).decode('utf-8')
         
-        # Cek agar tidak menginisialisasi aplikasi yang sama berulang kali
+        # Ubah string JSON menjadi dictionary Python
+        service_account_info = json.loads(decoded_key_str)
+        
         if not firebase_admin._apps:
             cred = credentials.Certificate(service_account_info)
             firebase_admin.initialize_app(cred)
         
         db = firestore.client()
-        print("--- KONEKSI DATABASE BERHASIL SAAT STARTUP ---")
+        print("--- KONEKSI DATABASE BASE64 BERHASIL SAAT STARTUP ---")
 
     except Exception as e:
-        # Jika koneksi gagal saat startup, catat error fatal
-        print(f"--- KONEKSI DATABASE GAGAL SAAT STARTUP: {e} ---")
+        print(f"--- KONEKSI DATABASE BASE64 GAGAL SAAT STARTUP: {e} ---")
         db = None
 
-# --- Inisialisasi Aplikasi FastAPI ---
-# Kita daftarkan fungsi 'initialize_database' untuk dijalankan saat startup.
+# Inisialisasi Aplikasi FastAPI
 app = FastAPI(
     title="API Deteksi Harga Produk",
     on_startup=[initialize_database]
 )
 
-# --- Model Data Pydantic ---
+# Model Data Pydantic
 class Product(BaseModel):
     name: str
     price: int
     description: str
     product_id: str
 
-# --- API Endpoints ---
-
+# API Endpoints
 @app.get("/")
 def read_root():
-    """Endpoint root untuk mengecek status server."""
     if db:
         return {"status": "OK", "message": "API server is running and connected to database."}
     else:
@@ -64,19 +62,14 @@ def read_root():
 
 @app.get("/api/products/{product_id}", response_model=Product)
 async def get_product_by_id(product_id: str):
-    """Mengambil detail produk dari Firestore berdasarkan product_id."""
     if db is None:
-        # Jika koneksi database gagal saat startup, kirim error ini.
         raise HTTPException(status_code=503, detail="Layanan database tidak tersedia.")
-
     try:
         product_ref = db.collection('products').document(product_id)
         doc = product_ref.get()
-
         if doc.exists:
             return doc.to_dict()
         else:
             raise HTTPException(status_code=404, detail=f"Produk dengan ID '{product_id}' tidak ditemukan.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Terjadi kesalahan internal: {e}")
-
