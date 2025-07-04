@@ -1,25 +1,31 @@
 # main.py
-
-# Impor library yang dibutuhkan
-from fastapi import FastAPI, HTTPException
 import firebase_admin
 from firebase_admin import credentials, firestore
-from pydantic import BaseModel
+import os   # <-- Tambahkan import ini
+import json # <-- Tambahkan import ini
 
-# --- Inisialisasi Aplikasi FastAPI ---
-app = FastAPI(
-    title="API Deteksi Harga Produk",
-    description="API untuk mengambil detail produk berdasarkan ID.",
-    version="1.0.0"
-)
-
-# --- Inisialisasi Firebase Admin SDK ---
-# Pastikan file serviceAccountKey.json ada di folder yang sama
+# ...
 try:
-    cred = credentials.Certificate("serviceAccountKey.json")
-    firebase_admin.initialize_app(cred)
-    db = firestore.client()
-    print("Koneksi ke Firebase Firestore berhasil.")
+    # Ambil konten JSON dari environment variable Vercel
+    service_account_info_str = os.getenv('FIREBASE_SERVICE_ACCOUNT_JSON')
+    
+    if service_account_info_str:
+        # Ubah string JSON menjadi dictionary Python
+        service_account_info = json.loads(service_account_info_str)
+        
+        # Inisialisasi Firebase menggunakan dictionary tersebut
+        cred = credentials.Certificate(service_account_info)
+        firebase_admin.initialize_app(cred)
+        db = firestore.client()
+        print("Koneksi ke Firebase Firestore berhasil dari Environment Variable.")
+    else:
+        # Fallback untuk development lokal (jika file ada)
+        print("Mencoba koneksi lokal menggunakan serviceAccountKey.json...")
+        cred = credentials.Certificate("serviceAccountKey.json")
+        firebase_admin.initialize_app(cred)
+        db = firestore.client()
+        print("Koneksi ke Firebase Firestore berhasil dari file lokal.")
+
 except Exception as e:
     print(f"Gagal terhubung ke Firebase: {e}")
     db = None
