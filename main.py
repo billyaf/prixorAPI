@@ -1,74 +1,82 @@
-# main.py
+# main.py (Versi Diperbaiki)
+
+import os
+import json
 from fastapi import FastAPI, HTTPException
 import firebase_admin
 from firebase_admin import credentials, firestore
-import os
-import json
 from pydantic import BaseModel
 
-# ...
-try:
-    # Ambil konten JSON dari environment variable Vercel
-    service_account_info_str = os.getenv('FIREBASE_SERVICE_ACCOUNT_JSON')
-    
-    if service_account_info_str:
-        # Ubah string JSON menjadi dictionary Python
+# --- Variabel Global untuk Database ---
+# Kita siapkan variabel 'db' di sini, tapi kita isi nanti saat startup.
+db = None
+
+# --- Fungsi Startup Event ---
+# Fungsi ini akan dijalankan oleh FastAPI HANYA SATU KALI saat aplikasi dimulai.
+async def initialize_database():
+    """Menginisialisasi koneksi ke Firebase Firestore saat startup."""
+    global db
+    try:
+        # Ambil kredensial dari Environment Variable Vercel
+        service_account_info_str = os.getenv('FIREBASE_SERVICE_ACCOUNT_JSON')
+        
+        if not service_account_info_str:
+            raise ValueError("Kredensial Firebase tidak ditemukan di environment variables.")
+        
         service_account_info = json.loads(service_account_info_str)
         
-        # Inisialisasi Firebase menggunakan dictionary tersebut
-        cred = credentials.Certificate(service_account_info)
-        firebase_admin.initialize_app(cred)
+        # Cek agar tidak menginisialisasi aplikasi yang sama berulang kali
+        if not firebase_admin._apps:
+            cred = credentials.Certificate(service_account_info)
+            firebase_admin.initialize_app(cred)
+        
         db = firestore.client()
-        print("Koneksi ke Firebase Firestore berhasil dari Environment Variable.")
-    else:
-        # Fallback untuk development lokal (jika file ada)
-        print("Mencoba koneksi lokal menggunakan serviceAccountKey.json...")
-        cred = credentials.Certificate("serviceAccountKey.json")
-        firebase_admin.initialize_app(cred)
-        db = firestore.client()
-        print("Koneksi ke Firebase Firestore berhasil dari file lokal.")
+        print("--- KONEKSI DATABASE BERHASIL SAAT STARTUP ---")
 
-except Exception as e:
-    print(f"Gagal terhubung ke Firebase: {e}")
-    db = None
+    except Exception as e:
+        # Jika koneksi gagal saat startup, catat error fatal
+        print(f"--- KONEKSI DATABASE GAGAL SAAT STARTUP: {e} ---")
+        db = None
 
-# --- Model Data (Pydantic) ---
-# Ini mendefinisikan struktur data yang akan dikembalikan oleh API.
-# FastAPI akan menggunakannya untuk validasi dan dokumentasi otomatis.
+# --- Inisialisasi Aplikasi FastAPI ---
+# Kita daftarkan fungsi 'initialize_database' untuk dijalankan saat startup.
+app = FastAPI(
+    title="API Deteksi Harga Produk",
+    on_startup=[initialize_database]
+)
+
+# --- Model Data Pydantic ---
 class Product(BaseModel):
     name: str
     price: int
     description: str
     product_id: str
 
-# --- Endpoint Utama API ---
-# Ini adalah "jantung" dari API Anda.
+# --- API Endpoints ---
+
+@app.get("/")
+def read_root():
+    """Endpoint root untuk mengecek status server."""
+    if db:
+        return {"status": "OK", "message": "API server is running and connected to database."}
+    else:
+        return {"status": "ERROR", "message": "API server is running, but database connection FAILED."}
+
 @app.get("/api/products/{product_id}", response_model=Product)
 async def get_product_by_id(product_id: str):
-    """
-    Mengambil detail produk dari Firestore berdasarkan product_id.
-    Contoh ID: MIE_INDOMIE_GORENG
-    """
+    """Mengambil detail produk dari Firestore berdasarkan product_id."""
     if db is None:
+        # Jika koneksi database gagal saat startup, kirim error ini.
         raise HTTPException(status_code=503, detail="Layanan database tidak tersedia.")
 
     try:
-        # Mengambil dokumen dari koleksi 'products'
         product_ref = db.collection('products').document(product_id)
         doc = product_ref.get()
 
         if doc.exists:
-            # Jika dokumen ditemukan, kembalikan datanya.
-            # FastAPI akan otomatis mengubahnya menjadi JSON.
             return doc.to_dict()
         else:
-            # Jika tidak ditemukan, kirim error 404 Not Found.
             raise HTTPException(status_code=404, detail=f"Produk dengan ID '{product_id}' tidak ditemukan.")
     except Exception as e:
-        # Menangani error tak terduga lainnya
         raise HTTPException(status_code=500, detail=f"Terjadi kesalahan internal: {e}")
 
-# Endpoint root sederhana untuk memastikan server berjalan
-@app.get("/")
-def read_root():
-    return {"status": "API server is running!"}
